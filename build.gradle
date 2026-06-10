@@ -1,0 +1,87 @@
+// Root Gradle build for merged Eclipse projects
+plugins {
+    id 'java'
+}
+
+group = 'com.merged'
+version = '1.0.0'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+allprojects {
+    repositories {
+        mavenCentral()
+    }
+}
+
+// Configure subprojects to use their existing 'src' directory as source root.
+subprojects {
+    apply plugin: 'java'
+
+    // Use the existing 'src' folder inside each Eclipse project as the java source directory
+    sourceSets {
+        main {
+            java {
+                // projectDir points to the Eclipse project folder; it contains a 'src' directory
+                srcDirs = [file("${project.projectDir}/src")]
+            }
+            resources {
+                // keep default, but also include possible resources folders
+                srcDirs += [file("${project.projectDir}/resources"), file("${project.projectDir}/WebContent")]
+                // filter out non-existing dirs
+                srcDirs = srcDirs.findAll { it.exists() }
+            }
+        }
+    }
+
+    // A task that will build a runnable (fat) jar for the subproject if it contains a main class in sources.
+    task runnableJar(type: Jar) {
+        dependsOn classes
+
+        // scan Java sources for a public static void main( pattern
+        def mains = fileTree(dir: "${project.projectDir}/src", includes: ['**/*.java']).filter { f ->
+            try {
+                return f.text.contains('public static void main(')
+            } catch (Exception e) {
+                return false
+            }
+        }.collect { f ->
+            // derive fully qualified class name: strip projectDir/src/ and .java
+            def rel = f.path - (project.projectDir.path + File.separator + 'src' + File.separator)
+            rel = rel.replaceAll('\\\\', '/').replaceAll('/', '.')
+            rel = rel.replaceAll(/\.java$/, '')
+            return rel
+        }
+
+        doFirst {
+            if (mains.size() == 0) {
+                logger.lifecycle("No main class found in project ${project.name}; runnableJar will be skipped.")
+                enabled = false
+            } else {
+                manifest.attributes('Main-Class': mains[0])
+                from { configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) } }
+                with jar
+                archiveFileName = "${project.name}-all.jar"
+            }
+        }
+    }
+
+}
+
+// Aggregate task: build runnable jars for all subprojects
+task buildAllRunnables {
+    description = 'Build runnable (fat) jars for all subprojects that contain a main()'
+    group = 'build'
+    dependsOn(subprojects.collect { it.tasks.matching { it.name == 'runnableJar' } })
+}
+
+// Convenience task to assemble the whole multi-project
+task assembleAll {
+    description = 'Assemble all subprojects (runs build)'
+    group = 'build'
+    dependsOn subprojects.collect { it.tasks.matching { it.name == 'build' } }
+}
+

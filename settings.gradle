@@ -1,0 +1,13 @@
+// Auto-generated settings.gradle: include folders that look like Eclipse projects (contain a src/ directory)
+rootProject.name = 'designPatterns'
+
+def projectDirs = rootDir.listFiles().findAll { it.isDirectory() }
+projectDirs.each { dir ->
+    if (new File(dir, 'src').exists()) {
+        // sanitize project name: replace spaces and illegal chars with '-'
+        def sanitized = dir.name.replaceAll(/\s+/, '-').replaceAll(/[^A-Za-z0-9_\-]/, '')
+        include ":${sanitized}"
+        project(":${sanitized}").projectDir = file(dir.name)
+    }
+}
+
